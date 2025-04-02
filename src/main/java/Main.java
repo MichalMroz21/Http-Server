@@ -17,7 +17,7 @@ public class Main {
        serverSocket.accept(); // Wait for connection from client.
        System.out.println("accepted new connection");
      } catch (IOException e) {
-       System.out.println("IOException: " + e.getMessage());
+       System.out.println("IOExceptions: " + e.getMessage());
      }
   }
 }
