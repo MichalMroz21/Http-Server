@@ -29,13 +29,33 @@ public class RequestHandler {
                 return;
             }
 
-            String path = extractPathFromRequestLine(requestLine);
+            String[] requestParts = requestLine.split(" ");
+
+            if (requestParts.length < 2) {
+                clientSocket.close();
+                return;
+            }
+
+            String method = requestParts[0];
+            String path = requestParts[1];
+
             Map<String, String> headers = readHeaders(in);
 
-            String response = buildResponse(path, headers);
+            String response;
 
-            out.write(response.getBytes());
+            if ("GET".equals(method)) {
+                response = handleGet(path, headers);
+                out.write(response.getBytes());
+            } else if ("POST".equals(method)) {
+                response = handlePost(path, headers, in);
+                out.write(response.getBytes());
+            } else {
+                response = HttpStatusLines.NOT_FOUND;
+                out.write(response.getBytes());
+            }
+
             out.flush();
+
         } catch (IOException e) {
             System.out.println("Handler IOException: " + e.getMessage());
         } finally {
@@ -47,19 +67,11 @@ public class RequestHandler {
         }
     }
 
-    private String extractPathFromRequestLine(String requestLine) {
-        String[] parts = requestLine.split(" ");
-        if (parts.length >= 2) {
-            return parts[1];
-        } else {
-            return "";
-        }
-    }
-
     private Map<String, String> readHeaders(BufferedReader in) throws IOException {
         Map<String, String> headers = new HashMap<>();
 
         String line;
+
         while ((line = in.readLine()) != null && !line.isEmpty()) {
             int colonIndex = line.indexOf(":");
             if (colonIndex != -1) {
@@ -72,7 +84,7 @@ public class RequestHandler {
         return headers;
     }
 
-    private String buildResponse(String path, Map<String, String> headers) {
+    private String handleGet(String path, Map<String, String> headers) {
         if ("/".equals(path)) {
             return HttpStatusLines.OK + "\r\n";
         } else if (path.startsWith("/echo/")) {
@@ -94,6 +106,33 @@ public class RequestHandler {
                 }
             } else {
                 return HttpStatusLines.NOT_FOUND;
+            }
+        } else {
+            return HttpStatusLines.NOT_FOUND;
+        }
+    }
+
+    private String handlePost(String path, Map<String, String> headers, BufferedReader in) {
+        if (path.startsWith("/files/")) {
+            String filename = path.substring("/files/".length());
+            Path filePath = Path.of(directory, filename);
+
+            int contentLength = Integer.parseInt(headers.getOrDefault("content-length", "0"));
+
+            if (contentLength > 0) {
+                try {
+                    char[] bodyChars = new char[contentLength];
+                    int read = in.read(bodyChars);
+                    String body = new String(bodyChars, 0, read);
+
+                    Files.writeString(filePath, body);
+
+                    return HttpStatusLines.CREATED;
+                } catch (IOException e) {
+                    return HttpStatusLines.INTERNAL_SERVER_ERROR;
+                }
+            } else {
+                return HttpStatusLines.INTERNAL_SERVER_ERROR;
             }
         } else {
             return HttpStatusLines.NOT_FOUND;
