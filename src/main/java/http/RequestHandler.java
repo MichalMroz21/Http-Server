@@ -74,7 +74,7 @@ public class RequestHandler {
 
     private String buildResponse(String path, Map<String, String> headers) {
         if ("/".equals(path)) {
-            return "HTTP/1.1 200 OK\r\n\r\n";
+            return HttpStatusLines.OK + "\r\n";
         } else if (path.startsWith("/echo/")) {
             String echoContent = path.substring("/echo/".length());
             return buildOkResponse(echoContent);
@@ -90,19 +90,18 @@ public class RequestHandler {
                     byte[] fileContent = Files.readAllBytes(filePath);
                     return buildFileResponse(fileContent);
                 } catch (IOException e) {
-                    return "HTTP/1.1 500 Internal Server Error\r\n\r\n";
+                    return HttpStatusLines.INTERNAL_SERVER_ERROR;
                 }
             } else {
-                return "HTTP/1.1 404 Not Found\r\n\r\n";
+                return HttpStatusLines.NOT_FOUND;
             }
-        }
-        else {
-            return "HTTP/1.1 404 Not Found\r\n\r\n";
+        } else {
+            return HttpStatusLines.NOT_FOUND;
         }
     }
 
     private String buildFileResponse(byte[] content) {
-        String headers = "HTTP/1.1 200 OK\r\n" +
+        String headers = HttpStatusLines.OK +
                 "Content-Type: application/octet-stream\r\n" +
                 "Content-Length: " + content.length + "\r\n" +
                 "\r\n";
@@ -111,7 +110,7 @@ public class RequestHandler {
 
     private String buildOkResponse(String body) {
         int contentLength = body.getBytes().length;
-        return "HTTP/1.1 200 OK\r\n" +
+        return HttpStatusLines.OK +
                 "Content-Type: text/plain\r\n" +
                 "Content-Length: " + contentLength + "\r\n" +
                 "\r\n" +

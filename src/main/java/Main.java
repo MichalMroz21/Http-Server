@@ -3,7 +3,7 @@ public class Main {
         System.out.println("Starting server...");
 
         String directory = null;
-        
+
         for (int i = 0; i < args.length; i++) {
             if ("--directory".equals(args[i]) && i + 1 < args.length) {
                 directory = args[i + 1];
