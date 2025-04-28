@@ -1,23 +1,40 @@
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 
 public class Main {
-  public static void main(String[] args) {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-    System.out.println("Logs from your program will appear here!");
+    public static void main(String[] args) {
+        System.out.println("Logs from your program will appear here!");
 
-     try {
-       ServerSocket serverSocket = new ServerSocket(4221);
+        try {
+            ServerSocket serverSocket = new ServerSocket(4221);
+            serverSocket.setReuseAddress(true);
 
-       // Since the tester restarts your program quite often, setting SO_REUSEADDR
-       // ensures that we don't run into 'Address already in use' errors
-       serverSocket.setReuseAddress(true);
+            while (true) {
+                Socket clientSocket = serverSocket.accept();
+                System.out.println("Accepted new connection");
 
-       serverSocket.accept(); // Wait for connection from client.
-       System.out.println("accepted new connection");
-     } catch (IOException e) {
-       System.out.println("IOExceptions: " + e.getMessage());
-     }
-  }
+                handleClient(clientSocket);
+            }
+        } catch (IOException e) {
+            System.out.println("IOException: " + e.getMessage());
+        }
+    }
+
+    private static void handleClient(Socket clientSocket) {
+        try {
+            OutputStream out = clientSocket.getOutputStream();
+
+            // Send only status line and blank line after headers
+            String response = "HTTP/1.1 200 OK\r\n\r\n";
+
+            out.write(response.getBytes());
+            out.flush();
+
+            clientSocket.close();
+        } catch (IOException e) {
+            System.out.println("IOException when handling client: " + e.getMessage());
+        }
+    }
 }
