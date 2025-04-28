@@ -1,7 +1,20 @@
 public class Main {
     public static void main(String[] args) {
         System.out.println("Starting server...");
-        http.HttpServer server = new http.HttpServer(4221);
+
+        String directory = null;
+        for (int i = 0; i < args.length; i++) {
+            if ("--directory".equals(args[i]) && i + 1 < args.length) {
+                directory = args[i + 1];
+            }
+        }
+
+        if (directory == null) {
+            System.out.println("Missing --directory argument!");
+            System.exit(1);
+        }
+
+        http.HttpServer server = new http.HttpServer(4221, directory);
         server.start();
     }
 }

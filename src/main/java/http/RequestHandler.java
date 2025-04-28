@@ -2,14 +2,18 @@ package http;
 
 import java.io.*;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
 public class RequestHandler {
     private final Socket clientSocket;
+    private final String directory;
 
-    public RequestHandler(Socket clientSocket) {
+    public RequestHandler(Socket clientSocket, String directory) {
         this.clientSocket = clientSocket;
+        this.directory = directory;
     }
 
     public void handle() {
@@ -28,10 +32,12 @@ public class RequestHandler {
             String path = extractPathFromRequestLine(requestLine);
             Map<String, String> headers = readHeaders(in);
 
-            String response = buildResponse(path, headers);
+            if (!handleRequest(path, headers, out)) {
+                out.write(HttpStatusLines.NOT_FOUND.getBytes());
+            }
 
-            out.write(response.getBytes());
             out.flush();
+
         } catch (IOException e) {
             System.out.println("Handler IOException: " + e.getMessage());
         } finally {
@@ -45,6 +51,7 @@ public class RequestHandler {
 
     private String extractPathFromRequestLine(String requestLine) {
         String[] parts = requestLine.split(" ");
+
         if (parts.length >= 2) {
             return parts[1];
         } else {
@@ -56,6 +63,7 @@ public class RequestHandler {
         Map<String, String> headers = new HashMap<>();
 
         String line;
+
         while ((line = in.readLine()) != null && !line.isEmpty()) {
             int colonIndex = line.indexOf(":");
             if (colonIndex != -1) {
@@ -68,26 +76,54 @@ public class RequestHandler {
         return headers;
     }
 
-    private String buildResponse(String path, Map<String, String> headers) {
+    private boolean handleRequest(String path, Map<String, String> headers, OutputStream out) throws IOException {
         if ("/".equals(path)) {
-            return "HTTP/1.1 200 OK\r\n\r\n";
+            out.write(HttpStatusLines.OK.getBytes());
+            return true;
         } else if (path.startsWith("/echo/")) {
             String echoContent = path.substring("/echo/".length());
-            return buildOkResponse(echoContent);
+            writeTextResponse(out, echoContent);
+            return true;
         } else if ("/user-agent".equals(path)) {
             String userAgent = headers.getOrDefault("user-agent", "");
-            return buildOkResponse(userAgent);
-        } else {
-            return "HTTP/1.1 404 Not Found\r\n\r\n";
+            writeTextResponse(out, userAgent);
+            return true;
+        } else if (path.startsWith("/files/")) {
+            String filename = path.substring("/files/".length());
+            Path filePath = Path.of(directory, filename);
+
+            if (Files.exists(filePath)) {
+                byte[] fileContent = Files.readAllBytes(filePath);
+                writeFileResponse(out, fileContent);
+                return true;
+            } else {
+                out.write(HttpStatusLines.NOT_FOUND.getBytes());
+                return true;
+            }
         }
+
+        return false;
     }
 
-    private String buildOkResponse(String body) {
-        int contentLength = body.getBytes().length;
-        return "HTTP/1.1 200 OK\r\n" +
+    private void writeTextResponse(OutputStream out, String body) throws IOException {
+        byte[] bodyBytes = body.getBytes();
+
+        String headers = HttpStatusLines.OK +
                 "Content-Type: text/plain\r\n" +
-                "Content-Length: " + contentLength + "\r\n" +
-                "\r\n" +
-                body;
+                "Content-Length: " + bodyBytes.length + "\r\n" +
+                "\r\n";
+
+        out.write(headers.getBytes());
+        out.write(bodyBytes);
+    }
+
+    private void writeFileResponse(OutputStream out, byte[] content) throws IOException {
+        String headers = HttpStatusLines.OK +
+                "Content-Type: application/octet-stream\r\n" +
+                "Content-Length: " + content.length + "\r\n" +
+                "\r\n";
+
+        out.write(headers.getBytes());
+        out.write(content);
     }
 }
