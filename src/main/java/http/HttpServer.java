@@ -21,7 +21,7 @@ public class HttpServer {
                 System.out.println("Accepted new connection");
 
                 RequestHandler handler = new RequestHandler(clientSocket);
-                handler.handle();
+                new Thread(handler::handle).start();
             }
         } catch (IOException e) {
             System.out.println("Server IOException: " + e.getMessage());
