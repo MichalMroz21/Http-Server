@@ -3,6 +3,7 @@ public class Main {
         System.out.println("Starting server...");
 
         String directory = null;
+        
         for (int i = 0; i < args.length; i++) {
             if ("--directory".equals(args[i]) && i + 1 < args.length) {
                 directory = args[i + 1];
@@ -10,8 +11,8 @@ public class Main {
         }
 
         if (directory == null) {
-            System.out.println("Missing --directory argument!");
-            System.exit(1);
+            System.out.println("No directory specified, using default directory.");
+            directory = ".";
         }
 
         http.HttpServer server = new http.HttpServer(4221, directory);
