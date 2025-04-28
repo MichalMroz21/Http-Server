@@ -32,12 +32,10 @@ public class RequestHandler {
             String path = extractPathFromRequestLine(requestLine);
             Map<String, String> headers = readHeaders(in);
 
-            if (!handleRequest(path, headers, out)) {
-                out.write(HttpStatusLines.NOT_FOUND.getBytes());
-            }
+            String response = buildResponse(path, headers);
 
+            out.write(response.getBytes());
             out.flush();
-
         } catch (IOException e) {
             System.out.println("Handler IOException: " + e.getMessage());
         } finally {
@@ -51,7 +49,6 @@ public class RequestHandler {
 
     private String extractPathFromRequestLine(String requestLine) {
         String[] parts = requestLine.split(" ");
-
         if (parts.length >= 2) {
             return parts[1];
         } else {
@@ -63,7 +60,6 @@ public class RequestHandler {
         Map<String, String> headers = new HashMap<>();
 
         String line;
-
         while ((line = in.readLine()) != null && !line.isEmpty()) {
             int colonIndex = line.indexOf(":");
             if (colonIndex != -1) {
@@ -76,54 +72,49 @@ public class RequestHandler {
         return headers;
     }
 
-    private boolean handleRequest(String path, Map<String, String> headers, OutputStream out) throws IOException {
+    private String buildResponse(String path, Map<String, String> headers) {
         if ("/".equals(path)) {
-            out.write(HttpStatusLines.OK.getBytes());
-            return true;
+            return "HTTP/1.1 200 OK\r\n\r\n";
         } else if (path.startsWith("/echo/")) {
             String echoContent = path.substring("/echo/".length());
-            writeTextResponse(out, echoContent);
-            return true;
+            return buildOkResponse(echoContent);
         } else if ("/user-agent".equals(path)) {
             String userAgent = headers.getOrDefault("user-agent", "");
-            writeTextResponse(out, userAgent);
-            return true;
+            return buildOkResponse(userAgent);
         } else if (path.startsWith("/files/")) {
             String filename = path.substring("/files/".length());
             Path filePath = Path.of(directory, filename);
 
             if (Files.exists(filePath)) {
-                byte[] fileContent = Files.readAllBytes(filePath);
-                writeFileResponse(out, fileContent);
-                return true;
+                try {
+                    byte[] fileContent = Files.readAllBytes(filePath);
+                    return buildFileResponse(fileContent);
+                } catch (IOException e) {
+                    return "HTTP/1.1 500 Internal Server Error\r\n\r\n";
+                }
             } else {
-                out.write(HttpStatusLines.NOT_FOUND.getBytes());
-                return true;
+                return "HTTP/1.1 404 Not Found\r\n\r\n";
             }
         }
-
-        return false;
+        else {
+            return "HTTP/1.1 404 Not Found\r\n\r\n";
+        }
     }
 
-    private void writeTextResponse(OutputStream out, String body) throws IOException {
-        byte[] bodyBytes = body.getBytes();
-
-        String headers = HttpStatusLines.OK +
-                "Content-Type: text/plain\r\n" +
-                "Content-Length: " + bodyBytes.length + "\r\n" +
-                "\r\n";
-
-        out.write(headers.getBytes());
-        out.write(bodyBytes);
-    }
-
-    private void writeFileResponse(OutputStream out, byte[] content) throws IOException {
-        String headers = HttpStatusLines.OK +
+    private String buildFileResponse(byte[] content) {
+        String headers = "HTTP/1.1 200 OK\r\n" +
                 "Content-Type: application/octet-stream\r\n" +
                 "Content-Length: " + content.length + "\r\n" +
                 "\r\n";
+        return headers + new String(content);
+    }
 
-        out.write(headers.getBytes());
-        out.write(content);
+    private String buildOkResponse(String body) {
+        int contentLength = body.getBytes().length;
+        return "HTTP/1.1 200 OK\r\n" +
+                "Content-Type: text/plain\r\n" +
+                "Content-Length: " + contentLength + "\r\n" +
+                "\r\n" +
+                body;
     }
 }
