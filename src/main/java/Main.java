@@ -29,15 +29,25 @@ public class Main {
             BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
             OutputStream out = clientSocket.getOutputStream();
 
-            // Read the request line
             String requestLine = in.readLine();
             System.out.println("Request Line: " + requestLine);
 
             String path = extractPathFromRequestLine(requestLine);
 
             String response;
+
             if ("/".equals(path)) {
                 response = "HTTP/1.1 200 OK\r\n\r\n";
+
+            } else if (path.startsWith("/echo/")) {
+                String echoContent = path.substring("/echo/".length());
+                int contentLength = echoContent.getBytes().length;
+
+                response = "HTTP/1.1 200 OK\r\n" +
+                        "Content-Type: text/plain\r\n" +
+                        "Content-Length: " + contentLength + "\r\n" +
+                        "\r\n" +
+                        echoContent;
             } else {
                 response = "HTTP/1.1 404 Not Found\r\n\r\n";
             }
@@ -46,6 +56,7 @@ public class Main {
             out.flush();
 
             clientSocket.close();
+
         } catch (IOException e) {
             System.out.println("IOException when handling client: " + e.getMessage());
         }
