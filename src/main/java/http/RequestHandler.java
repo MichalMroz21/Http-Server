@@ -30,12 +30,11 @@ public class RequestHandler {
             }
 
             String[] requestParts = requestLine.split(" ");
-
             if (requestParts.length < 2) {
                 clientSocket.close();
                 return;
             }
-
+            
             String method = requestParts[0];
             String path = requestParts[1];
 
@@ -53,9 +52,7 @@ public class RequestHandler {
                 response = HttpStatusLines.NOT_FOUND;
                 out.write(response.getBytes());
             }
-
             out.flush();
-
         } catch (IOException e) {
             System.out.println("Handler IOException: " + e.getMessage());
         } finally {
@@ -71,7 +68,6 @@ public class RequestHandler {
         Map<String, String> headers = new HashMap<>();
 
         String line;
-
         while ((line = in.readLine()) != null && !line.isEmpty()) {
             int colonIndex = line.indexOf(":");
             if (colonIndex != -1) {
@@ -85,14 +81,24 @@ public class RequestHandler {
     }
 
     private String handleGet(String path, Map<String, String> headers) {
+        boolean clientAcceptsGzip = false;
+
+        if (headers.containsKey("accept-encoding")) {
+            String acceptEncoding = headers.get("accept-encoding");
+
+            if (acceptEncoding.contains("gzip")) {
+                clientAcceptsGzip = true;
+            }
+        }
+
         if ("/".equals(path)) {
             return HttpStatusLines.OK + "\r\n";
         } else if (path.startsWith("/echo/")) {
             String echoContent = path.substring("/echo/".length());
-            return buildOkResponse(echoContent);
+            return buildOkResponse(echoContent, clientAcceptsGzip);
         } else if ("/user-agent".equals(path)) {
             String userAgent = headers.getOrDefault("user-agent", "");
-            return buildOkResponse(userAgent);
+            return buildOkResponse(userAgent, clientAcceptsGzip);
         } else if (path.startsWith("/files/")) {
             String filename = path.substring("/files/".length());
             Path filePath = Path.of(directory, filename);
@@ -107,6 +113,7 @@ public class RequestHandler {
             } else {
                 return HttpStatusLines.NOT_FOUND;
             }
+
         } else {
             return HttpStatusLines.NOT_FOUND;
         }
@@ -118,7 +125,6 @@ public class RequestHandler {
             Path filePath = Path.of(directory, filename);
 
             int contentLength = Integer.parseInt(headers.getOrDefault("content-length", "0"));
-
             if (contentLength > 0) {
                 try {
                     char[] bodyChars = new char[contentLength];
@@ -127,7 +133,7 @@ public class RequestHandler {
 
                     Files.writeString(filePath, body);
 
-                    return HttpStatusLines.CREATED;
+                    return "HTTP/1.1 201 Created\r\n\r\n";
                 } catch (IOException e) {
                     return HttpStatusLines.INTERNAL_SERVER_ERROR;
                 }
@@ -147,12 +153,21 @@ public class RequestHandler {
         return headers + new String(content);
     }
 
-    private String buildOkResponse(String body) {
+    private String buildOkResponse(String body, boolean clientAcceptsGzip) {
         int contentLength = body.getBytes().length;
-        return HttpStatusLines.OK +
-                "Content-Type: text/plain\r\n" +
-                "Content-Length: " + contentLength + "\r\n" +
-                "\r\n" +
-                body;
+
+        StringBuilder response = new StringBuilder();
+        response.append(HttpStatusLines.OK);
+        response.append("Content-Type: text/plain\r\n");
+
+        if (clientAcceptsGzip) {
+            response.append("Content-Encoding: gzip\r\n");
+        }
+
+        response.append("Content-Length: ").append(contentLength).append("\r\n");
+        response.append("\r\n");
+        response.append(body);
+
+        return response.toString();
     }
 }
