@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.zip.GZIPOutputStream;
 
 public class RequestHandler {
     private final Socket clientSocket;
@@ -34,7 +35,7 @@ public class RequestHandler {
                 clientSocket.close();
                 return;
             }
-            
+
             String method = requestParts[0];
             String path = requestParts[1];
 
@@ -68,6 +69,7 @@ public class RequestHandler {
         Map<String, String> headers = new HashMap<>();
 
         String line;
+
         while ((line = in.readLine()) != null && !line.isEmpty()) {
             int colonIndex = line.indexOf(":");
             if (colonIndex != -1) {
@@ -154,20 +156,32 @@ public class RequestHandler {
     }
 
     private String buildOkResponse(String body, boolean clientAcceptsGzip) {
-        int contentLength = body.getBytes().length;
-
         StringBuilder response = new StringBuilder();
         response.append(HttpStatusLines.OK);
         response.append("Content-Type: text/plain\r\n");
 
-        if (clientAcceptsGzip) {
-            response.append("Content-Encoding: gzip\r\n");
+        byte[] bodyBytes;
+
+        try {
+            if (clientAcceptsGzip) {
+                ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+                try (GZIPOutputStream gzipStream = new GZIPOutputStream(byteStream)) {
+                    gzipStream.write(body.getBytes());
+                }
+                bodyBytes = byteStream.toByteArray();
+                response.append("Content-Encoding: gzip\r\n");
+            } else {
+                bodyBytes = body.getBytes();
+            }
+
+            response.append("Content-Length: ").append(bodyBytes.length).append("\r\n");
+            response.append("\r\n");
+
+            return response.toString() + new String(bodyBytes, "ISO-8859-1");
+
+        } catch (IOException e) {
+            return HttpStatusLines.INTERNAL_SERVER_ERROR;
         }
-
-        response.append("Content-Length: ").append(contentLength).append("\r\n");
-        response.append("\r\n");
-        response.append(body);
-
-        return response.toString();
     }
+
 }
