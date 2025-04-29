@@ -2,6 +2,7 @@ package http;
 
 import java.io.*;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -157,7 +158,7 @@ public class RequestHandler {
 
     private String buildOkResponse(String body, boolean clientAcceptsGzip) {
         StringBuilder response = new StringBuilder();
-        response.append(HttpStatusLines.OK);
+        response.append("HTTP/1.1 200 OK\r\n");
         response.append("Content-Type: text/plain\r\n");
 
         byte[] bodyBytes;
@@ -166,21 +167,28 @@ public class RequestHandler {
             if (clientAcceptsGzip) {
                 ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
                 try (GZIPOutputStream gzipStream = new GZIPOutputStream(byteStream)) {
-                    gzipStream.write(body.getBytes());
+                    gzipStream.write(body.getBytes(StandardCharsets.UTF_8));
                 }
                 bodyBytes = byteStream.toByteArray();
                 response.append("Content-Encoding: gzip\r\n");
             } else {
-                bodyBytes = body.getBytes();
+                bodyBytes = body.getBytes(StandardCharsets.UTF_8);
             }
 
             response.append("Content-Length: ").append(bodyBytes.length).append("\r\n");
             response.append("\r\n");
 
-            return response.toString() + new String(bodyBytes);
+            byte[] headerBytes = response.toString().getBytes(StandardCharsets.UTF_8);
+            byte[] fullResponse = new byte[headerBytes.length + bodyBytes.length];
+
+            System.arraycopy(headerBytes, 0, fullResponse, 0, headerBytes.length);
+
+            System.arraycopy(bodyBytes, 0, fullResponse, headerBytes.length, bodyBytes.length);
+
+            return new String(fullResponse, StandardCharsets.ISO_8859_1);
 
         } catch (IOException e) {
-            return HttpStatusLines.INTERNAL_SERVER_ERROR;
+            return "HTTP/1.1 500 Internal Server Error\r\n\r\n";
         }
     }
 }
