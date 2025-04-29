@@ -23,7 +23,6 @@ public class RequestHandler {
                 BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
                 OutputStream out = clientSocket.getOutputStream()
         ) {
-            // Read the request line
             String requestLine = in.readLine();
             System.out.println("Request Line: " + requestLine);
 
@@ -41,7 +40,6 @@ public class RequestHandler {
             String method = requestParts[0];
             String path = requestParts[1];
 
-            // Read headers
             Map<String, String> headers = readHeaders(in);
 
             if ("GET".equals(method)) {
@@ -51,7 +49,9 @@ public class RequestHandler {
             } else {
                 out.write(HttpStatusLines.NOT_FOUND.getBytes());
             }
+
             out.flush();
+
         } catch (IOException e) {
             System.out.println("Handler IOException: " + e.getMessage());
         } finally {
@@ -63,7 +63,6 @@ public class RequestHandler {
         }
     }
 
-    // Helper method to read headers
     private Map<String, String> readHeaders(BufferedReader in) throws IOException {
         Map<String, String> headers = new HashMap<>();
 
@@ -81,11 +80,9 @@ public class RequestHandler {
         return headers;
     }
 
-    // Handle GET requests
     private void handleGet(String path, Map<String, String> headers, OutputStream out) throws IOException {
         boolean clientAcceptsGzip = false;
 
-        // Check if client accepts Gzip encoding
         if (headers.containsKey("accept-encoding")) {
             String acceptEncoding = headers.get("accept-encoding");
             if (acceptEncoding.contains("gzip")) {
@@ -96,15 +93,12 @@ public class RequestHandler {
         if ("/".equals(path)) {
             out.write((HttpStatusLines.OK + "\r\n").getBytes());
         } else if (path.startsWith("/echo/")) {
-            // Handle /echo/ path
             String echoContent = path.substring("/echo/".length());
             sendOkResponse(echoContent, clientAcceptsGzip, out);
         } else if ("/user-agent".equals(path)) {
-            // Handle /user-agent path
             String userAgent = headers.getOrDefault("user-agent", "");
             sendOkResponse(userAgent, clientAcceptsGzip, out);
         } else if (path.startsWith("/files/")) {
-            // Handle /files/ path to serve files
             String filename = path.substring("/files/".length());
             Path filePath = Path.of(directory, filename);
 
@@ -123,7 +117,6 @@ public class RequestHandler {
         }
     }
 
-    // Handle POST requests
     private void handlePost(String path, Map<String, String> headers, BufferedReader in, OutputStream out) throws IOException {
         if (path.startsWith("/files/")) {
             String filename = path.substring("/files/".length());
@@ -150,7 +143,6 @@ public class RequestHandler {
         }
     }
 
-    // Generate a response for files
     private void sendFileResponse(byte[] content, OutputStream out) throws IOException {
         String headers = HttpStatusLines.OK +
                 "Content-Type: application/octet-stream\r\n" +
@@ -160,9 +152,7 @@ public class RequestHandler {
         out.write(content);
     }
 
-    // Send a response with GZIP support
     private void sendOkResponse(String body, boolean useGzip, OutputStream out) throws IOException {
-        // Build the HTTP response header
         StringBuilder headerBuilder = new StringBuilder();
         headerBuilder.append("HTTP/1.1 200 OK\r\n");
         headerBuilder.append("Content-Type: text/plain\r\n");
@@ -170,7 +160,6 @@ public class RequestHandler {
         byte[] bodyBytes;
 
         if (useGzip) {
-            // If client accepts gzip, compress the body
             ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
             try (GZIPOutputStream gzipStream = new GZIPOutputStream(byteStream)) {
                 gzipStream.write(body.getBytes(StandardCharsets.UTF_8));
@@ -178,14 +167,12 @@ public class RequestHandler {
             bodyBytes = byteStream.toByteArray();
             headerBuilder.append("Content-Encoding: gzip\r\n");
         } else {
-            // If no gzip is requested, just convert the body to bytes normally
             bodyBytes = body.getBytes(StandardCharsets.UTF_8);
         }
 
-        // Set content length based on body size
         headerBuilder.append("Content-Length: ").append(bodyBytes.length).append("\r\n");
         headerBuilder.append("\r\n");
-        
+
         out.write(headerBuilder.toString().getBytes(StandardCharsets.UTF_8));
         out.write(bodyBytes);
     }
