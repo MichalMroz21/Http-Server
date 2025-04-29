@@ -19,39 +19,45 @@ public class RequestHandler {
     }
 
     public void handle() {
-        try (
-                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                OutputStream out = clientSocket.getOutputStream()
-        ) {
-            String requestLine = in.readLine();
-            System.out.println("Request Line: " + requestLine);
+        try {
+            BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+            OutputStream out = clientSocket.getOutputStream();
 
-            if (requestLine == null || requestLine.isEmpty()) {
-                clientSocket.close();
-                return;
+            while (true) {
+                String requestLine = in.readLine();
+
+                // If client disconnected or sent empty line, exit
+                if (requestLine == null || requestLine.isEmpty()) {
+                    break;
+                }
+
+                System.out.println("Request Line: " + requestLine);
+
+                String[] requestParts = requestLine.split(" ");
+                if (requestParts.length < 2) {
+                    break;
+                }
+
+                String method = requestParts[0];
+                String path = requestParts[1];
+
+                Map<String, String> headers = readHeaders(in);
+
+                if ("GET".equals(method)) {
+                    handleGet(path, headers, out);
+                } else if ("POST".equals(method)) {
+                    handlePost(path, headers, in, out);
+                } else {
+                    out.write(HttpStatusLines.NOT_FOUND.getBytes());
+                }
+
+                out.flush();
+
+                // Check if client wants to close the connection
+                if ("close".equalsIgnoreCase(headers.getOrDefault("connection", ""))) {
+                    break;
+                }
             }
-
-            String[] requestParts = requestLine.split(" ");
-            if (requestParts.length < 2) {
-                clientSocket.close();
-                return;
-            }
-
-            String method = requestParts[0];
-            String path = requestParts[1];
-
-            Map<String, String> headers = readHeaders(in);
-
-            if ("GET".equals(method)) {
-                handleGet(path, headers, out);
-            } else if ("POST".equals(method)) {
-                handlePost(path, headers, in, out);
-            } else {
-                out.write(HttpStatusLines.NOT_FOUND.getBytes());
-            }
-
-            out.flush();
-
         } catch (IOException e) {
             System.out.println("Handler IOException: " + e.getMessage());
         } finally {
@@ -161,11 +167,14 @@ public class RequestHandler {
 
         if (useGzip) {
             ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+
             try (GZIPOutputStream gzipStream = new GZIPOutputStream(byteStream)) {
                 gzipStream.write(body.getBytes(StandardCharsets.UTF_8));
             }
+
             bodyBytes = byteStream.toByteArray();
             headerBuilder.append("Content-Encoding: gzip\r\n");
+
         } else {
             bodyBytes = body.getBytes(StandardCharsets.UTF_8);
         }
