@@ -44,17 +44,12 @@ public class RequestHandler {
             // Read headers
             Map<String, String> headers = readHeaders(in);
 
-            String response;
-
             if ("GET".equals(method)) {
-                response = handleGet(path, headers);
-                out.write(response.getBytes());
+                handleGet(path, headers, out);
             } else if ("POST".equals(method)) {
-                response = handlePost(path, headers, in);
-                out.write(response.getBytes());
+                handlePost(path, headers, in, out);
             } else {
-                response = HttpStatusLines.NOT_FOUND;
-                out.write(response.getBytes());
+                out.write(HttpStatusLines.NOT_FOUND.getBytes());
             }
             out.flush();
         } catch (IOException e) {
@@ -87,7 +82,7 @@ public class RequestHandler {
     }
 
     // Handle GET requests
-    private String handleGet(String path, Map<String, String> headers) {
+    private void handleGet(String path, Map<String, String> headers, OutputStream out) throws IOException {
         boolean clientAcceptsGzip = false;
 
         // Check if client accepts Gzip encoding
@@ -99,15 +94,15 @@ public class RequestHandler {
         }
 
         if ("/".equals(path)) {
-            return HttpStatusLines.OK + "\r\n";
+            out.write((HttpStatusLines.OK + "\r\n").getBytes());
         } else if (path.startsWith("/echo/")) {
             // Handle /echo/ path
             String echoContent = path.substring("/echo/".length());
-            return buildOkResponse(echoContent, clientAcceptsGzip);
+            sendOkResponse(echoContent, clientAcceptsGzip, out);
         } else if ("/user-agent".equals(path)) {
             // Handle /user-agent path
             String userAgent = headers.getOrDefault("user-agent", "");
-            return buildOkResponse(userAgent, clientAcceptsGzip);
+            sendOkResponse(userAgent, clientAcceptsGzip, out);
         } else if (path.startsWith("/files/")) {
             // Handle /files/ path to serve files
             String filename = path.substring("/files/".length());
@@ -116,21 +111,20 @@ public class RequestHandler {
             if (Files.exists(filePath)) {
                 try {
                     byte[] fileContent = Files.readAllBytes(filePath);
-                    return buildFileResponse(fileContent);
+                    sendFileResponse(fileContent, out);
                 } catch (IOException e) {
-                    return HttpStatusLines.INTERNAL_SERVER_ERROR;
+                    out.write(HttpStatusLines.INTERNAL_SERVER_ERROR.getBytes());
                 }
             } else {
-                return HttpStatusLines.NOT_FOUND;
+                out.write(HttpStatusLines.NOT_FOUND.getBytes());
             }
-
         } else {
-            return HttpStatusLines.NOT_FOUND;
+            out.write(HttpStatusLines.NOT_FOUND.getBytes());
         }
     }
 
     // Handle POST requests
-    private String handlePost(String path, Map<String, String> headers, BufferedReader in) {
+    private void handlePost(String path, Map<String, String> headers, BufferedReader in, OutputStream out) throws IOException {
         if (path.startsWith("/files/")) {
             String filename = path.substring("/files/".length());
             Path filePath = Path.of(directory, filename);
@@ -144,67 +138,55 @@ public class RequestHandler {
 
                     Files.writeString(filePath, body);
 
-                    return "HTTP/1.1 201 Created\r\n\r\n";
+                    out.write("HTTP/1.1 201 Created\r\n\r\n".getBytes());
                 } catch (IOException e) {
-                    return HttpStatusLines.INTERNAL_SERVER_ERROR;
+                    out.write(HttpStatusLines.INTERNAL_SERVER_ERROR.getBytes());
                 }
             } else {
-                return HttpStatusLines.INTERNAL_SERVER_ERROR;
+                out.write(HttpStatusLines.INTERNAL_SERVER_ERROR.getBytes());
             }
         } else {
-            return HttpStatusLines.NOT_FOUND;
+            out.write(HttpStatusLines.NOT_FOUND.getBytes());
         }
     }
 
     // Generate a response for files
-    private String buildFileResponse(byte[] content) {
+    private void sendFileResponse(byte[] content, OutputStream out) throws IOException {
         String headers = HttpStatusLines.OK +
                 "Content-Type: application/octet-stream\r\n" +
                 "Content-Length: " + content.length + "\r\n" +
                 "\r\n";
-        return headers + new String(content);
+        out.write(headers.getBytes());
+        out.write(content);
     }
 
-    // Build a response with GZIP support
-    private String buildOkResponse(String body, boolean clientAcceptsGzip) {
+    // Send a response with GZIP support
+    private void sendOkResponse(String body, boolean useGzip, OutputStream out) throws IOException {
         // Build the HTTP response header
-        StringBuilder response = new StringBuilder();
-        response.append("HTTP/1.1 200 OK\r\n");
-        response.append("Content-Type: text/plain\r\n");
+        StringBuilder headerBuilder = new StringBuilder();
+        headerBuilder.append("HTTP/1.1 200 OK\r\n");
+        headerBuilder.append("Content-Type: text/plain\r\n");
 
         byte[] bodyBytes;
-        try {
-            if (clientAcceptsGzip) {
-                // If client accepts gzip, compress the body
-                ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
-                try (GZIPOutputStream gzipStream = new GZIPOutputStream(byteStream)) {
-                    gzipStream.write(body.getBytes(StandardCharsets.UTF_8));
-                }
-                bodyBytes = byteStream.toByteArray();
-                response.append("Content-Encoding: gzip\r\n");
-            } else {
-                // If no gzip is requested, just convert the body to bytes normally
-                bodyBytes = body.getBytes(StandardCharsets.UTF_8);
+
+        if (useGzip) {
+            // If client accepts gzip, compress the body
+            ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+            try (GZIPOutputStream gzipStream = new GZIPOutputStream(byteStream)) {
+                gzipStream.write(body.getBytes(StandardCharsets.UTF_8));
             }
-
-            // Set content length based on body size
-            response.append("Content-Length: ").append(bodyBytes.length).append("\r\n");
-            response.append("\r\n");
-
-            // Convert header part to bytes
-            byte[] headerBytes = response.toString().getBytes(StandardCharsets.UTF_8);
-
-            // Combine the header and the body into a final response
-            byte[] fullResponse = new byte[headerBytes.length + bodyBytes.length];
-            System.arraycopy(headerBytes, 0, fullResponse, 0, headerBytes.length);
-            System.arraycopy(bodyBytes, 0, fullResponse, headerBytes.length, bodyBytes.length);
-
-            // Return as a string (this might cause issues, so let's return the response as a byte[] instead)
-            return new String(fullResponse, StandardCharsets.ISO_8859_1); // This might still not be perfect.
-        } catch (IOException e) {
-            // In case of error, return an internal server error
-            return HttpStatusLines.INTERNAL_SERVER_ERROR;
+            bodyBytes = byteStream.toByteArray();
+            headerBuilder.append("Content-Encoding: gzip\r\n");
+        } else {
+            // If no gzip is requested, just convert the body to bytes normally
+            bodyBytes = body.getBytes(StandardCharsets.UTF_8);
         }
-    }
 
+        // Set content length based on body size
+        headerBuilder.append("Content-Length: ").append(bodyBytes.length).append("\r\n");
+        headerBuilder.append("\r\n");
+        
+        out.write(headerBuilder.toString().getBytes(StandardCharsets.UTF_8));
+        out.write(bodyBytes);
+    }
 }
