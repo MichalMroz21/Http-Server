@@ -2,6 +2,7 @@ package http;
 
 import java.io.*;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -162,15 +163,15 @@ public class RequestHandler {
             if (clientAcceptsGzip) {
                 ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
                 try (GZIPOutputStream gzipOut = new GZIPOutputStream(byteStream)) {
-                    gzipOut.write(body.getBytes());
+                    gzipOut.write(body.getBytes(StandardCharsets.UTF_8));
                 }
                 bodyBytes = byteStream.toByteArray();
             } else {
-                bodyBytes = body.getBytes();
+                bodyBytes = body.getBytes(StandardCharsets.UTF_8);
             }
 
             StringBuilder response = new StringBuilder();
-            response.append(HttpStatusLines.OK);
+            response.append("HTTP/1.1 200 OK\r\n");
             response.append("Content-Type: text/plain\r\n");
 
             if (clientAcceptsGzip) {
@@ -178,13 +179,12 @@ public class RequestHandler {
             }
 
             response.append("Content-Length: ").append(bodyBytes.length).append("\r\n");
-            response.append("\r\n");
+            response.append("\r\n"); // End of headers
 
-            // Concatenate headers with body bytes using ISO-8859-1 to preserve binary data
-            return response.toString() + new String(bodyBytes, "ISO-8859-1");
+            return response.toString() + new String(bodyBytes, StandardCharsets.ISO_8859_1);
 
         } catch (IOException e) {
-            return HttpStatusLines.INTERNAL_SERVER_ERROR;
+            return "HTTP/1.1 500 Internal Server Error\r\n\r\n";
         }
     }
 
