@@ -23,6 +23,7 @@ public class RequestHandler {
                 BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
                 OutputStream out = clientSocket.getOutputStream()
         ) {
+            // Read the request line
             String requestLine = in.readLine();
             System.out.println("Request Line: " + requestLine);
 
@@ -40,6 +41,7 @@ public class RequestHandler {
             String method = requestParts[0];
             String path = requestParts[1];
 
+            // Read headers
             Map<String, String> headers = readHeaders(in);
 
             String response;
@@ -66,6 +68,7 @@ public class RequestHandler {
         }
     }
 
+    // Helper method to read headers
     private Map<String, String> readHeaders(BufferedReader in) throws IOException {
         Map<String, String> headers = new HashMap<>();
 
@@ -83,12 +86,13 @@ public class RequestHandler {
         return headers;
     }
 
+    // Handle GET requests
     private String handleGet(String path, Map<String, String> headers) {
         boolean clientAcceptsGzip = false;
 
+        // Check if client accepts Gzip encoding
         if (headers.containsKey("accept-encoding")) {
             String acceptEncoding = headers.get("accept-encoding");
-
             if (acceptEncoding.contains("gzip")) {
                 clientAcceptsGzip = true;
             }
@@ -97,12 +101,15 @@ public class RequestHandler {
         if ("/".equals(path)) {
             return HttpStatusLines.OK + "\r\n";
         } else if (path.startsWith("/echo/")) {
+            // Handle /echo/ path
             String echoContent = path.substring("/echo/".length());
             return buildOkResponse(echoContent, clientAcceptsGzip);
         } else if ("/user-agent".equals(path)) {
+            // Handle /user-agent path
             String userAgent = headers.getOrDefault("user-agent", "");
             return buildOkResponse(userAgent, clientAcceptsGzip);
         } else if (path.startsWith("/files/")) {
+            // Handle /files/ path to serve files
             String filename = path.substring("/files/".length());
             Path filePath = Path.of(directory, filename);
 
@@ -122,6 +129,7 @@ public class RequestHandler {
         }
     }
 
+    // Handle POST requests
     private String handlePost(String path, Map<String, String> headers, BufferedReader in) {
         if (path.startsWith("/files/")) {
             String filename = path.substring("/files/".length());
@@ -148,6 +156,7 @@ public class RequestHandler {
         }
     }
 
+    // Generate a response for files
     private String buildFileResponse(byte[] content) {
         String headers = HttpStatusLines.OK +
                 "Content-Type: application/octet-stream\r\n" +
@@ -156,6 +165,7 @@ public class RequestHandler {
         return headers + new String(content);
     }
 
+    // Build a response with GZIP support
     private String buildOkResponse(String body, boolean clientAcceptsGzip) {
         StringBuilder response = new StringBuilder();
         response.append("HTTP/1.1 200 OK\r\n");
@@ -182,13 +192,12 @@ public class RequestHandler {
             byte[] fullResponse = new byte[headerBytes.length + bodyBytes.length];
 
             System.arraycopy(headerBytes, 0, fullResponse, 0, headerBytes.length);
-
             System.arraycopy(bodyBytes, 0, fullResponse, headerBytes.length, bodyBytes.length);
 
             return new String(fullResponse, StandardCharsets.ISO_8859_1);
 
         } catch (IOException e) {
-            return "HTTP/1.1 500 Internal Server Error\r\n\r\n";
+            return HttpStatusLines.INTERNAL_SERVER_ERROR;
         }
     }
 }
