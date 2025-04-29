@@ -156,34 +156,38 @@ public class RequestHandler {
     }
 
     private String buildOkResponse(String body, boolean clientAcceptsGzip) {
-        StringBuilder response = new StringBuilder();
-        response.append(HttpStatusLines.OK);
-        response.append("Content-Type: text/plain\r\n");
-
-        byte[] bodyBytes;
-
         try {
+            byte[] bodyBytes;
+
             if (clientAcceptsGzip) {
                 ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
-                try (GZIPOutputStream gzipStream = new GZIPOutputStream(byteStream)) {
-                    gzipStream.write(body.getBytes());
+                try (GZIPOutputStream gzipOut = new GZIPOutputStream(byteStream)) {
+                    gzipOut.write(body.getBytes());
                 }
                 bodyBytes = byteStream.toByteArray();
-                response.append("Content-Encoding: gzip\r\n");
             } else {
                 bodyBytes = body.getBytes();
+            }
+
+            StringBuilder response = new StringBuilder();
+            response.append(HttpStatusLines.OK);
+            response.append("Content-Type: text/plain\r\n");
+
+            if (clientAcceptsGzip) {
+                response.append("Content-Encoding: gzip\r\n");
             }
 
             response.append("Content-Length: ").append(bodyBytes.length).append("\r\n");
             response.append("\r\n");
 
-            // Append raw body bytes as ISO-8859-1 encoded string to prevent corruption
-            return response.toString();
+            // Concatenate headers with body bytes using ISO-8859-1 to preserve binary data
+            return response.toString() + new String(bodyBytes, "ISO-8859-1");
 
         } catch (IOException e) {
             return HttpStatusLines.INTERNAL_SERVER_ERROR;
         }
     }
+
 
 
 }
