@@ -167,14 +167,15 @@ public class RequestHandler {
 
     // Build a response with GZIP support
     private String buildOkResponse(String body, boolean clientAcceptsGzip) {
+        // Build the HTTP response header
         StringBuilder response = new StringBuilder();
         response.append("HTTP/1.1 200 OK\r\n");
         response.append("Content-Type: text/plain\r\n");
 
         byte[] bodyBytes;
-
         try {
             if (clientAcceptsGzip) {
+                // If client accepts gzip, compress the body
                 ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
                 try (GZIPOutputStream gzipStream = new GZIPOutputStream(byteStream)) {
                     gzipStream.write(body.getBytes(StandardCharsets.UTF_8));
@@ -182,22 +183,28 @@ public class RequestHandler {
                 bodyBytes = byteStream.toByteArray();
                 response.append("Content-Encoding: gzip\r\n");
             } else {
+                // If no gzip is requested, just convert the body to bytes normally
                 bodyBytes = body.getBytes(StandardCharsets.UTF_8);
             }
 
+            // Set content length based on body size
             response.append("Content-Length: ").append(bodyBytes.length).append("\r\n");
             response.append("\r\n");
 
+            // Convert header part to bytes
             byte[] headerBytes = response.toString().getBytes(StandardCharsets.UTF_8);
-            byte[] fullResponse = new byte[headerBytes.length + bodyBytes.length];
 
+            // Combine the header and the body into a final response
+            byte[] fullResponse = new byte[headerBytes.length + bodyBytes.length];
             System.arraycopy(headerBytes, 0, fullResponse, 0, headerBytes.length);
             System.arraycopy(bodyBytes, 0, fullResponse, headerBytes.length, bodyBytes.length);
 
-            return new String(fullResponse, StandardCharsets.ISO_8859_1);
-
+            // Return as a string (this might cause issues, so let's return the response as a byte[] instead)
+            return new String(fullResponse, StandardCharsets.ISO_8859_1); // This might still not be perfect.
         } catch (IOException e) {
+            // In case of error, return an internal server error
             return HttpStatusLines.INTERNAL_SERVER_ERROR;
         }
     }
+
 }
