@@ -26,7 +26,6 @@ public class RequestHandler {
             while (true) {
                 String requestLine = in.readLine();
 
-                // If client disconnected or sent empty line, exit
                 if (requestLine == null || requestLine.isEmpty()) {
                     break;
                 }
@@ -43,18 +42,20 @@ public class RequestHandler {
 
                 Map<String, String> headers = readHeaders(in);
 
+                boolean closeConnection = "close".equalsIgnoreCase(headers.getOrDefault("connection", ""));
+
                 if ("GET".equals(method)) {
-                    handleGet(path, headers, out);
+                    handleGet(path, headers, out, closeConnection);
                 } else if ("POST".equals(method)) {
-                    handlePost(path, headers, in, out);
+                    handlePost(path, headers, in, out, closeConnection);
                 } else {
-                    out.write(HttpStatusLines.NOT_FOUND.getBytes());
+                    sendErrorResponse(out, HttpStatusLines.NOT_FOUND, closeConnection);
                 }
 
                 out.flush();
 
-                // Check if client wants to close the connection
-                if ("close".equalsIgnoreCase(headers.getOrDefault("connection", ""))) {
+                // If client requested connection close, break the loop
+                if (closeConnection) {
                     break;
                 }
             }
@@ -86,7 +87,7 @@ public class RequestHandler {
         return headers;
     }
 
-    private void handleGet(String path, Map<String, String> headers, OutputStream out) throws IOException {
+    private void handleGet(String path, Map<String, String> headers, OutputStream out, boolean closeConnection) throws IOException {
         boolean clientAcceptsGzip = false;
 
         if (headers.containsKey("accept-encoding")) {
@@ -97,13 +98,13 @@ public class RequestHandler {
         }
 
         if ("/".equals(path)) {
-            out.write((HttpStatusLines.OK + "\r\n").getBytes());
+            sendRootResponse(out, closeConnection);
         } else if (path.startsWith("/echo/")) {
             String echoContent = path.substring("/echo/".length());
-            sendOkResponse(echoContent, clientAcceptsGzip, out);
+            sendOkResponse(echoContent, clientAcceptsGzip, out, closeConnection);
         } else if ("/user-agent".equals(path)) {
             String userAgent = headers.getOrDefault("user-agent", "");
-            sendOkResponse(userAgent, clientAcceptsGzip, out);
+            sendOkResponse(userAgent, clientAcceptsGzip, out, closeConnection);
         } else if (path.startsWith("/files/")) {
             String filename = path.substring("/files/".length());
             Path filePath = Path.of(directory, filename);
@@ -111,19 +112,19 @@ public class RequestHandler {
             if (Files.exists(filePath)) {
                 try {
                     byte[] fileContent = Files.readAllBytes(filePath);
-                    sendFileResponse(fileContent, out);
+                    sendFileResponse(fileContent, out, closeConnection);
                 } catch (IOException e) {
-                    out.write(HttpStatusLines.INTERNAL_SERVER_ERROR.getBytes());
+                    sendErrorResponse(out, HttpStatusLines.INTERNAL_SERVER_ERROR, closeConnection);
                 }
             } else {
-                out.write(HttpStatusLines.NOT_FOUND.getBytes());
+                sendErrorResponse(out, HttpStatusLines.NOT_FOUND, closeConnection);
             }
         } else {
-            out.write(HttpStatusLines.NOT_FOUND.getBytes());
+            sendErrorResponse(out, HttpStatusLines.NOT_FOUND, closeConnection);
         }
     }
 
-    private void handlePost(String path, Map<String, String> headers, BufferedReader in, OutputStream out) throws IOException {
+    private void handlePost(String path, Map<String, String> headers, BufferedReader in, OutputStream out, boolean closeConnection) throws IOException {
         if (path.startsWith("/files/")) {
             String filename = path.substring("/files/".length());
             Path filePath = Path.of(directory, filename);
@@ -137,28 +138,64 @@ public class RequestHandler {
 
                     Files.writeString(filePath, body);
 
-                    out.write("HTTP/1.1 201 Created\r\n\r\n".getBytes());
+                    sendCreatedResponse(out, closeConnection);
                 } catch (IOException e) {
-                    out.write(HttpStatusLines.INTERNAL_SERVER_ERROR.getBytes());
+                    sendErrorResponse(out, HttpStatusLines.INTERNAL_SERVER_ERROR, closeConnection);
                 }
             } else {
-                out.write(HttpStatusLines.INTERNAL_SERVER_ERROR.getBytes());
+                sendErrorResponse(out, HttpStatusLines.INTERNAL_SERVER_ERROR, closeConnection);
             }
         } else {
-            out.write(HttpStatusLines.NOT_FOUND.getBytes());
+            sendErrorResponse(out, HttpStatusLines.NOT_FOUND, closeConnection);
         }
     }
 
-    private void sendFileResponse(byte[] content, OutputStream out) throws IOException {
-        String headers = HttpStatusLines.OK +
-                "Content-Type: application/octet-stream\r\n" +
-                "Content-Length: " + content.length + "\r\n" +
-                "\r\n";
-        out.write(headers.getBytes());
+    private void sendRootResponse(OutputStream out, boolean closeConnection) throws IOException {
+        StringBuilder response = new StringBuilder();
+        response.append(HttpStatusLines.OK);
+
+        if (closeConnection) {
+            response.append("Connection: close\r\n");
+        }
+
+        response.append("\r\n");
+        out.write(response.toString().getBytes());
+    }
+
+    private void sendCreatedResponse(OutputStream out, boolean closeConnection) throws IOException {
+        if (closeConnection) {
+            out.write("HTTP/1.1 201 Created\r\nConnection: close\r\n\r\n".getBytes());
+        } else {
+            out.write("HTTP/1.1 201 Created\r\n\r\n".getBytes());
+        }
+    }
+
+    private void sendErrorResponse(OutputStream out, String statusLine, boolean closeConnection) throws IOException {
+        if (closeConnection) {
+            String status = statusLine.substring(0, statusLine.length() - 4);
+            out.write((status + "\r\nConnection: close\r\n\r\n").getBytes());
+        } else {
+            out.write(statusLine.getBytes());
+        }
+    }
+
+    private void sendFileResponse(byte[] content, OutputStream out, boolean closeConnection) throws IOException {
+        StringBuilder headerBuilder = new StringBuilder();
+        headerBuilder.append(HttpStatusLines.OK);
+        headerBuilder.append("Content-Type: application/octet-stream\r\n");
+        headerBuilder.append("Content-Length: ").append(content.length).append("\r\n");
+
+        if (closeConnection) {
+            headerBuilder.append("Connection: close\r\n");
+        }
+
+        headerBuilder.append("\r\n");
+
+        out.write(headerBuilder.toString().getBytes());
         out.write(content);
     }
 
-    private void sendOkResponse(String body, boolean useGzip, OutputStream out) throws IOException {
+    private void sendOkResponse(String body, boolean useGzip, OutputStream out, boolean closeConnection) throws IOException {
         StringBuilder headerBuilder = new StringBuilder();
         headerBuilder.append("HTTP/1.1 200 OK\r\n");
         headerBuilder.append("Content-Type: text/plain\r\n");
@@ -174,12 +211,16 @@ public class RequestHandler {
 
             bodyBytes = byteStream.toByteArray();
             headerBuilder.append("Content-Encoding: gzip\r\n");
-
         } else {
             bodyBytes = body.getBytes(StandardCharsets.UTF_8);
         }
 
         headerBuilder.append("Content-Length: ").append(bodyBytes.length).append("\r\n");
+
+        if (closeConnection) {
+            headerBuilder.append("Connection: close\r\n");
+        }
+
         headerBuilder.append("\r\n");
 
         out.write(headerBuilder.toString().getBytes(StandardCharsets.UTF_8));
