@@ -156,7 +156,7 @@ public class RequestHandler {
         return headers + new String(content);
     }
 
-    private String buildOkResponse(String body, boolean clientAcceptsGzip) {
+    public String buildOkResponse(String body, boolean clientAcceptsGzip) {
         try {
             byte[] bodyBytes;
 
@@ -179,9 +179,17 @@ public class RequestHandler {
             }
 
             response.append("Content-Length: ").append(bodyBytes.length).append("\r\n");
-            response.append("\r\n"); // End of headers
 
-            return response.toString() + new String(bodyBytes, StandardCharsets.ISO_8859_1);
+            response.append("\r\n");
+
+            byte[] headerBytes = response.toString().getBytes(StandardCharsets.UTF_8);
+            byte[] fullResponse = new byte[headerBytes.length + bodyBytes.length];
+
+            System.arraycopy(headerBytes, 0, fullResponse, 0, headerBytes.length);
+
+            System.arraycopy(bodyBytes, 0, fullResponse, headerBytes.length, bodyBytes.length);
+
+            return new String(fullResponse, StandardCharsets.ISO_8859_1);
 
         } catch (IOException e) {
             return "HTTP/1.1 500 Internal Server Error\r\n\r\n";
