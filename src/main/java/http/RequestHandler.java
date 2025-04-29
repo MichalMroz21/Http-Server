@@ -156,29 +156,38 @@ public class RequestHandler {
     }
 
     private String buildOkResponse(String body, boolean clientAcceptsGzip) {
-        StringBuilder response = new StringBuilder();
-        response.append(HttpStatusLines.OK);
-        response.append("Content-Type: text/plain\r\n");
-
-        byte[] bodyBytes;
-
         try {
+            byte[] bodyBytes = body.getBytes();
+
             if (clientAcceptsGzip) {
+                // Compress the body using gzip
                 ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
                 try (GZIPOutputStream gzipStream = new GZIPOutputStream(byteStream)) {
-                    gzipStream.write(body.getBytes());
+                    gzipStream.write(bodyBytes);
                 }
-                bodyBytes = byteStream.toByteArray();
+                byte[] compressedBody = byteStream.toByteArray();
+
+                // Build headers with compressed length
+                StringBuilder response = new StringBuilder();
+                response.append(HttpStatusLines.OK);
+                response.append("Content-Type: text/plain\r\n");
                 response.append("Content-Encoding: gzip\r\n");
+                response.append("Content-Length: ").append(compressedBody.length).append("\r\n");
+                response.append("\r\n");
+
+                // Important: send raw bytes after headers
+                return response.toString() + new String(compressedBody, "ISO-8859-1");
+                // Using ISO-8859-1 to avoid corruption of binary data when treating as String
             } else {
-                bodyBytes = body.getBytes();
+                // No compression, normal response
+                StringBuilder response = new StringBuilder();
+                response.append(HttpStatusLines.OK);
+                response.append("Content-Type: text/plain\r\n");
+                response.append("Content-Length: ").append(bodyBytes.length).append("\r\n");
+                response.append("\r\n");
+                response.append(body);
+                return response.toString();
             }
-
-            response.append("Content-Length: ").append(bodyBytes.length).append("\r\n");
-            response.append("\r\n");
-
-            return response.toString() + new String(bodyBytes, "ISO-8859-1");
-
         } catch (IOException e) {
             return HttpStatusLines.INTERNAL_SERVER_ERROR;
         }
